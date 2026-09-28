@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/test_watcher.sh - Unit test suite for music-gain watcher.sh
+# tests/test_watcher.sh - Unit test suite for normalizeusz watcher.sh
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,7 +39,7 @@ assert_exit_code() {
   fi
 }
 
-echo "=== Running music-gain watcher test suite ==="
+echo "=== Running normalizeusz watcher test suite ==="
 
 # Pre-check: Ensure watcher.sh exists and source it in test mode
 if [[ ! -f "${WATCHER_SCRIPT}" ]]; then

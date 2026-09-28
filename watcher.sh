@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# watcher.sh - Music library loudness normalization sidecar watcher (rsgain)
+# watcher.sh - Music library loudness normalization sidecar watcher (rsgain / normalizeusz)
 set -uo pipefail
 
 MUSIC_DIR="${MUSIC_DIR:-/music}"
 DEBOUNCE_SECONDS="${DEBOUNCE_SECONDS:-5}"
 INITIAL_SCAN="${INITIAL_SCAN:-true}"
 MAX_THREADS="${MAX_THREADS:-MAX}"
-QUEUE_DIR="${QUEUE_DIR:-/tmp/music-gain/queue}"
+QUEUE_DIR="${QUEUE_DIR:-/tmp/normalizeusz/queue}"
 TEST_MODE="${TEST_MODE:-false}"
 
 mkdir -p "${QUEUE_DIR}"
 
 log() {
-  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [music-gain] $*"
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] [normalizeusz] $*"
 }
 
 # Determine if a file is a temporary or hidden file
@@ -181,7 +181,7 @@ WORKER_PID=""
 INOTIFY_PID=""
 
 cleanup() {
-  log "Shutting down music-gain watcher..."
+  log "Shutting down normalizeusz watcher..."
   RUNNING=false
   if [[ -n "${WORKER_PID}" ]]; then
     kill "${WORKER_PID}" 2>/dev/null || true
@@ -196,7 +196,7 @@ cleanup() {
 main() {
   trap cleanup SIGTERM SIGINT SIGQUIT EXIT
 
-  log "music-gain watcher service initialized."
+  log "normalizeusz watcher service initialized."
   log "Settings: MUSIC_DIR=${MUSIC_DIR}, DEBOUNCE=${DEBOUNCE_SECONDS}s, THREADS=${MAX_THREADS}"
 
   # Start queue worker loop in background

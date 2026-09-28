@@ -1,4 +1,4 @@
-# music-gain: Automatyczna Normalizacja Głośności Biblioteki Muzycznej (ReplayGain 2.0 / EBU R128)
+# normalizeusz: Automatyczna Normalizacja Głośności Biblioteki Muzycznej (ReplayGain 2.0 / EBU R128)
 
 Ultralekki, bezobsługowy kontener Docker (sidecar), który działa w tle i automatycznie wylicza oraz zapisuje metadane głośności dla plików muzycznych trafiających do katalogu biblioteki (zasilanej m.in. przez slskd, Navidrome i Downloadeusza).
 
@@ -21,7 +21,7 @@ Ultralekki, bezobsługowy kontener Docker (sidecar), który działa w tle i auto
 
 ```text
 ├── Dockerfile           # Lekki obraz Alpine 3.21 z rsgain i inotify-tools
-├── docker-compose.yml   # Definicja usługi music-gain pod montowanie wolumenów
+├── docker-compose.yml   # Definicja usługi normalizeusz pod montowanie wolumenów
 ├── entrypoint.sh        # Konfiguracja uprawnień PUID/PGID (1000:1000) i su-exec
 ├── watcher.sh           # Skan początkowy, nasłuch inotifywait oraz kolejka debounce
 ├── tests/               # Zestaw automatycznych testów jednostkowych
@@ -40,17 +40,17 @@ Wszystkie polecenia wykonujesz ze swojego komputera PC.
 
 ```bash
 # 1. Połącz się przez SSH lub utwórz katalog docelowy
-ssh mateusz@192.168.1.102 "mkdir -p /home/mateusz/docker/music-gain"
+ssh mateusz@192.168.1.102 "mkdir -p /home/mateusz/docker/normalizeusz"
 
 # 2. Prześlij pliki konfiguracyjne i skrypty na serwer
-scp Dockerfile docker-compose.yml entrypoint.sh watcher.sh mateusz@192.168.1.102:/home/mateusz/docker/music-gain/
+scp Dockerfile docker-compose.yml entrypoint.sh watcher.sh mateusz@192.168.1.102:/home/mateusz/docker/normalizeusz/
 ```
 
 ### Krok 2: Uruchomienie kontenera przez `ssh`
 
 ```bash
 ssh mateusz@192.168.1.102
-cd /home/mateusz/docker/music-gain
+cd /home/mateusz/docker/normalizeusz
 
 # Zbudowanie obrazu i uruchomienie w tle
 docker compose up -d --build
@@ -60,17 +60,17 @@ docker compose up -d --build
 
 ```bash
 # Podgląd logów w czasie rzeczywistym
-docker compose logs -f music-gain
+docker compose logs -f normalizeusz
 ```
 
 Przykładowy poprawny log startowy:
 ```text
-[music-gain-entrypoint] Dropping privileges to UID:GID (1000:1000)...
-[music-gain] music-gain watcher service initialized.
-[music-gain] Settings: MUSIC_DIR=/music, DEBOUNCE=5s, THREADS=MAX
-[music-gain] Starting initial library scan in /music...
-[music-gain] Initial library scan completed.
-[music-gain] Watching /music for close_write and moved_to events...
+[normalizeusz-entrypoint] Dropping privileges to UID:GID (1000:1000)...
+[normalizeusz] normalizeusz watcher service initialized.
+[normalizeusz] Settings: MUSIC_DIR=/music, DEBOUNCE=5s, THREADS=MAX
+[normalizeusz] Starting initial library scan in /music...
+[normalizeusz] Initial library scan completed.
+[normalizeusz] Watching /music for close_write and moved_to events...
 ```
 
 ---

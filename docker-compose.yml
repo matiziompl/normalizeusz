@@ -1,7 +1,8 @@
 services:
-  music-gain:
+  normalizeusz:
     build: .
-    container_name: music-gain
+    container_name: normalizeusz
+    image: normalizeusz:latest
     restart: unless-stopped
     environment:
       - PUID=1000

@@ -1,7 +1,7 @@
 FROM alpine:3.21
 
 LABEL maintainer="mateusz"
-LABEL description="music-gain: automatic non-invasive ReplayGain 2.0 / EBU R128 loudness normalizer"
+LABEL description="normalizeusz: automatic non-invasive ReplayGain 2.0 / EBU R128 loudness normalizer"
 
 # Install rsgain (Alpine community repo), inotify-tools, and supporting utilities
 RUN apk add --no-cache \

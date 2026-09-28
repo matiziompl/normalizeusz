@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/test_entrypoint.sh - Unit test suite for entrypoint.sh
+# tests/test_entrypoint.sh - Unit test suite for normalizeusz entrypoint.sh
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,7 +24,7 @@ assert_eq() {
   fi
 }
 
-echo "=== Running entrypoint.sh test suite ==="
+echo "=== Running normalizeusz entrypoint.sh test suite ==="
 
 if [[ ! -f "${ENTRYPOINT_SCRIPT}" ]]; then
   echo "FATAL: ${ENTRYPOINT_SCRIPT} not found!"
