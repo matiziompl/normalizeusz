@@ -1,0 +1,6 @@
+.git
+.gitignore
+.superpowers
+tests
+docs
+*.md
