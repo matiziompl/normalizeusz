@@ -155,6 +155,27 @@ assert_exit_code "initial_scan called rsgain easy for album dir" 0 grep -F "easy
 # Check that rsgain custom was called for loose root file
 assert_exit_code "initial_scan called rsgain custom for loose track" 0 grep -F "custom -s i -S ${MUSIC_DIR}/single_song.mp3" "${MOCK_LOG}"
 
+echo
+echo "--- Testing: Event Handling (handle_event) ---"
+mkdir -p "${MUSIC_DIR}/MovedAlbum"
+rm -f "${QUEUE_DIR}"/*
+handle_event "${MUSIC_DIR}/MovedAlbum"
+assert_eq "Directory moved_to event queues DIR: target" "1" "$(find "${QUEUE_DIR}" -type f | wc -l | tr -d ' ')"
+QUEUE_FILE="$(find "${QUEUE_DIR}" -type f | head -n 1)"
+assert_eq "Queued target for moved directory is DIR: target" "DIR:${MUSIC_DIR}/MovedAlbum" "$(tail -n +2 "${QUEUE_FILE}")"
+
+# Non-audio file event should be ignored
+rm -f "${QUEUE_DIR}"/*
+handle_event "${MUSIC_DIR}/Artist/Album/cover.jpg"
+assert_eq "Non-audio file event is ignored" "0" "$(find "${QUEUE_DIR}" -type f | wc -l | tr -d ' ')"
+
+echo
+echo "--- Testing: Queue Resilience Against Corrupted Files ---"
+# Non-numeric timestamp in queue
+printf "invalid_timestamp\nDIR:${MUSIC_DIR}/Artist/Album\n" > "${QUEUE_DIR}/corrupted_item"
+process_queue
+assert_eq "Corrupted queue item is removed" "0" "$(find "${QUEUE_DIR}" -type f | wc -l | tr -d ' ')"
+
 # Clean mock bin
 rm -rf "${MOCK_BIN_DIR}"
 
@@ -164,3 +185,4 @@ if [[ ${FAILED} -gt 0 ]]; then
   exit 1
 fi
 exit 0
+

@@ -77,9 +77,26 @@ queue_event() {
   local queue_file="${QUEUE_DIR}/${hash}"
   local tmp_file="${QUEUE_DIR}/.${hash}.tmp"
 
-  # Write timestamp (line 1) and target string (line 2) atomically
+  # Write timestamp (line 1) and target string (lines 2+) atomically
   printf "%s\n%s\n" "$(date +%s)" "${target}" > "${tmp_file}"
   mv "${tmp_file}" "${queue_file}"
+}
+
+# Handle an inotify filesystem event
+handle_event() {
+  local event_path="$1"
+  if [[ -d "${event_path}" ]]; then
+    # Directory moved_to event (e.g. atomic move of an album directory)
+    local norm_music_dir="${MUSIC_DIR%/}"
+    local norm_event_dir="${event_path%/}"
+    if [[ "${norm_event_dir}" != "${norm_music_dir}" ]]; then
+      queue_event "DIR:${event_path}"
+    fi
+  elif is_audio_file "${event_path}"; then
+    local target
+    target="$(get_target "${event_path}")"
+    queue_event "${target}"
+  fi
 }
 
 # Execute rsgain on the target
@@ -115,9 +132,10 @@ process_queue() {
     local ts
     ts="$(head -n 1 "${queue_file}" 2>/dev/null || true)"
     local target
-    target="$(sed -n '2p' "${queue_file}" 2>/dev/null || true)"
+    target="$(tail -n +2 "${queue_file}" 2>/dev/null || true)"
 
-    if [[ -z "${ts}" || -z "${target}" ]]; then
+    # Validate that timestamp exists and is numeric, and target is non-empty
+    if [[ -z "${ts}" || ! "${ts}" =~ ^[0-9]+$ || -z "${target}" ]]; then
       rm -f "${queue_file}"
       continue
     fi
@@ -181,8 +199,6 @@ main() {
   log "music-gain watcher service initialized."
   log "Settings: MUSIC_DIR=${MUSIC_DIR}, DEBOUNCE=${DEBOUNCE_SECONDS}s, THREADS=${MAX_THREADS}"
 
-  initial_scan
-
   # Start queue worker loop in background
   (
     while [[ "${RUNNING}" == "true" ]]; do
@@ -194,14 +210,19 @@ main() {
 
   log "Watching ${MUSIC_DIR} for close_write and moved_to events..."
 
-  # Run inotifywait loop
-  inotifywait -m -r -e close_write,moved_to --format '%w%f' "${MUSIC_DIR}" | while IFS= read -r file_path; do
-    if is_audio_file "${file_path}"; then
-      local target
-      target="$(get_target "${file_path}")"
-      queue_event "${target}"
-    fi
-  done
+  # Start inotifywait loop in background so no events are missed during initial scan
+  (
+    inotifywait -m -r -e close_write,moved_to --format '%w%f' "${MUSIC_DIR}" | while IFS= read -r file_path; do
+      handle_event "${file_path}"
+    done
+  ) &
+  INOTIFY_PID=$!
+
+  # Perform initial scan while watcher is already actively listening
+  initial_scan
+
+  # Wait on background processes to allow signals to be handled immediately
+  wait -n "${WORKER_PID}" "${INOTIFY_PID}" 2>/dev/null || true
 }
 
 # Only run main if executed directly, not sourced during tests
