@@ -54,6 +54,8 @@ export DEBOUNCE_SECONDS=2
 export MAX_THREADS="MAX"
 TEST_QUEUE_DIR="$(mktemp -d /tmp/music_gain_test_queue.XXXXXX)"
 export QUEUE_DIR="${TEST_QUEUE_DIR}"
+TEST_SCANNED_DIR="$(mktemp -d /tmp/music_gain_test_scanned.XXXXXX)"
+export SCANNED_DIR="${TEST_SCANNED_DIR}"
 
 mkdir -p "${TEST_MUSIC_DIR}/Pink Floyd/The Wall/CD1"
 mkdir -p "${TEST_MUSIC_DIR}/Artist/Album"
@@ -66,7 +68,7 @@ touch "${TEST_MUSIC_DIR}/Artist/Album/track.mp3"
 touch "${TEST_MUSIC_DIR}/AC/DC/Back In Black [1980]/01 - Hells Bells.mp3"
 
 cleanup_test() {
-  rm -rf "${TEST_QUEUE_DIR}" "${TEST_MUSIC_DIR}"
+  rm -rf "${TEST_QUEUE_DIR}" "${TEST_SCANNED_DIR}" "${TEST_MUSIC_DIR}"
 }
 trap cleanup_test EXIT
 
@@ -175,6 +177,15 @@ echo "--- Testing: Queue Resilience Against Corrupted Files ---"
 printf "invalid_timestamp\nDIR:${MUSIC_DIR}/Artist/Album\n" > "${QUEUE_DIR}/corrupted_item"
 process_queue
 assert_eq "Corrupted queue item is removed" "0" "$(find "${QUEUE_DIR}" -type f | wc -l | tr -d ' ')"
+
+echo
+echo "--- Testing: Self-Trigger Echo Suppression ---"
+rm -f "${QUEUE_DIR}"/*
+# Simulate run_scan_target on an album
+run_scan_target "DIR:${MUSIC_DIR}/Artist/Album"
+# An inotify close_write event arriving right after rsgain writes tags
+handle_event "${MUSIC_DIR}/Artist/Album/track.mp3"
+assert_eq "Echo event from rsgain scan is suppressed" "0" "$(find "${QUEUE_DIR}" -type f | wc -l | tr -d ' ')"
 
 # Clean mock bin
 rm -rf "${MOCK_BIN_DIR}"

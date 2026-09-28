@@ -7,9 +7,11 @@ DEBOUNCE_SECONDS="${DEBOUNCE_SECONDS:-5}"
 INITIAL_SCAN="${INITIAL_SCAN:-true}"
 MAX_THREADS="${MAX_THREADS:-MAX}"
 QUEUE_DIR="${QUEUE_DIR:-/tmp/normalizeusz/queue}"
+SCANNED_DIR="${SCANNED_DIR:-/tmp/normalizeusz/scanned}"
+ECHO_COOLDOWN_SECONDS="${ECHO_COOLDOWN_SECONDS:-15}"
 TEST_MODE="${TEST_MODE:-false}"
 
-mkdir -p "${QUEUE_DIR}"
+mkdir -p "${QUEUE_DIR}" "${SCANNED_DIR}"
 
 log() {
   echo "[$(date '+%Y-%m-%d %H:%M:%S')] [normalizeusz] $*"
@@ -85,18 +87,49 @@ queue_event() {
 # Handle an inotify filesystem event
 handle_event() {
   local event_path="$1"
+  local target=""
+
   if [[ -d "${event_path}" ]]; then
     # Directory moved_to event (e.g. atomic move of an album directory)
     local norm_music_dir="${MUSIC_DIR%/}"
     local norm_event_dir="${event_path%/}"
     if [[ "${norm_event_dir}" != "${norm_music_dir}" ]]; then
-      queue_event "DIR:${event_path}"
+      target="DIR:${event_path}"
     fi
   elif is_audio_file "${event_path}"; then
-    local target
     target="$(get_target "${event_path}")"
-    queue_event "${target}"
   fi
+
+  [[ -n "${target}" ]] || return 0
+
+  # Echo suppression check:
+  # If this target was scanned recently by normalizeusz itself, ignore the inotify echo
+  local hash
+  hash="$(printf "%s" "${target}" | md5sum | awk '{print $1}')"
+  local scanned_file="${SCANNED_DIR}/${hash}"
+  if [[ -f "${scanned_file}" ]]; then
+    local last_scan
+    last_scan="$(head -n 1 "${scanned_file}" 2>/dev/null || true)"
+    if [[ -n "${last_scan}" && "${last_scan}" =~ ^[0-9]+$ ]]; then
+      local now
+      now="$(date +%s)"
+      local diff=$(( now - last_scan ))
+      if (( diff < ECHO_COOLDOWN_SECONDS )); then
+        # Echo event from rsgain write - ignore
+        return 0
+      fi
+    fi
+  fi
+
+  queue_event "${target}"
+}
+
+# Mark a target as recently scanned to prevent self-trigger inotify feedback
+mark_scanned() {
+  local target="$1"
+  local hash
+  hash="$(printf "%s" "${target}" | md5sum | awk '{print $1}')"
+  date +%s > "${SCANNED_DIR}/${hash}"
 }
 
 # Execute rsgain on the target
@@ -119,6 +152,9 @@ run_scan_target() {
   else
     log "Warning: Unknown target type: ${type}"
   fi
+
+  # Record completion timestamp so self-writes do not re-queue this target
+  mark_scanned "${target}"
 }
 
 # Process the queue, executing rsgain for items that stabilized past DEBOUNCE_SECONDS
@@ -162,6 +198,7 @@ initial_scan() {
   find "${MUSIC_DIR}" -mindepth 1 -maxdepth 1 -type d | while IFS= read -r dir; do
     log "Initial scan: album directory '${dir}'"
     rsgain easy -S -m "${MAX_THREADS}" "${dir}"
+    mark_scanned "DIR:${dir}"
   done
 
   # Scan loose files in root
@@ -169,6 +206,7 @@ initial_scan() {
     if is_audio_file "${file}"; then
       log "Initial scan: loose track '${file}'"
       rsgain custom -s i -S "${file}"
+      mark_scanned "FILE:${file}"
     fi
   done
 
@@ -196,6 +234,9 @@ cleanup() {
 main() {
   trap cleanup SIGTERM SIGINT SIGQUIT EXIT
 
+  # Clean any stale queue entries on startup to prevent stale restart loops
+  rm -rf "${QUEUE_DIR:?}"/* "${SCANNED_DIR:?}"/* 2>/dev/null || true
+
   log "normalizeusz watcher service initialized."
   log "Settings: MUSIC_DIR=${MUSIC_DIR}, DEBOUNCE=${DEBOUNCE_SECONDS}s, THREADS=${MAX_THREADS}"
 
@@ -210,7 +251,7 @@ main() {
 
   log "Watching ${MUSIC_DIR} for close_write and moved_to events..."
 
-  # Start inotifywait loop in background so no events are missed during initial scan
+  # Start inotifywait loop in background
   (
     inotifywait -m -r -e close_write,moved_to --format '%w%f' "${MUSIC_DIR}" | while IFS= read -r file_path; do
       handle_event "${file_path}"

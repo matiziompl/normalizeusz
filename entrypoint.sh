@@ -20,8 +20,8 @@ if [[ -z "${USER_NAME}" ]]; then
   adduser -u "${PUID}" -G "${GROUP_NAME}" -S -D -H "${USER_NAME}" 2>/dev/null || true
 fi
 
-# Ensure queue directory exists with correct permissions
-mkdir -p "${QUEUE_BASE_DIR}/queue"
+# Ensure queue and scanned directories exist with correct permissions
+mkdir -p "${QUEUE_BASE_DIR}/queue" "${QUEUE_BASE_DIR}/scanned"
 chown -R "${PUID}:${PGID}" "${QUEUE_BASE_DIR}"
 
 TARGET_CMD=( "/usr/local/bin/watcher.sh" )
