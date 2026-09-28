@@ -1,0 +1,14 @@
+services:
+  music-gain:
+    build: .
+    container_name: music-gain
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Warsaw
+      - DEBOUNCE_SECONDS=5
+      - INITIAL_SCAN=true
+      - MAX_THREADS=MAX
+    volumes:
+      - /home/mateusz/media/music:/music:rw
