@@ -54,7 +54,7 @@ services:
       - INITIAL_SCAN=true
       - MAX_THREADS=MAX
     volumes:
-      - /home/mateusz/media/music:/music:rw
+      - /home/user/media/music:/music:rw
 ```
 
 ### 2. Environment Variables
