@@ -119,17 +119,6 @@ ReplayGain is a **two-step standard**:
 
 ---
 
-## 🧪 Testing
-
-The repository includes a comprehensive test suite covering file filtering, path extraction, debouncing, queue resilience, and echo suppression:
-
-```bash
-bash tests/test_watcher.sh
-bash tests/test_entrypoint.sh
-```
-
----
-
 ## 📄 License
 
 MIT
