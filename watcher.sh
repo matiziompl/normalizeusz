@@ -10,6 +10,8 @@ QUEUE_DIR="${QUEUE_DIR:-/tmp/normalizeusz/queue}"
 SCANNED_DIR="${SCANNED_DIR:-/tmp/normalizeusz/scanned}"
 ECHO_COOLDOWN_SECONDS="${ECHO_COOLDOWN_SECONDS:-15}"
 TEST_MODE="${TEST_MODE:-false}"
+DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"
+ERROR_LOG_FILE="${ERROR_LOG_FILE:-${MUSIC_DIR%/}/.normalizeusz_errors.log}"
 
 mkdir -p "${QUEUE_DIR}" "${SCANNED_DIR}"
 
@@ -132,6 +134,128 @@ mark_scanned() {
   date +%s > "${SCANNED_DIR}/${hash}"
 }
 
+# Escape strings safely for JSON payloads
+json_escape() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/}"
+  s="${s//$'\t'/\\t}"
+  printf "%s" "${s}"
+}
+
+# Resolve Discord webhook URL from environment or fallback files
+get_discord_webhook_url() {
+  if [[ -n "${DISCORD_WEBHOOK_URL}" ]]; then
+    printf "%s" "${DISCORD_WEBHOOK_URL}"
+    return 0
+  fi
+  if [[ -f "${MUSIC_DIR%/}/.discord_webhook" ]]; then
+    head -n 1 "${MUSIC_DIR%/}/.discord_webhook" 2>/dev/null | tr -d '\r\n'
+    return 0
+  fi
+  if [[ -f "/etc/normalizeusz/discord_webhook" ]]; then
+    head -n 1 "/etc/normalizeusz/discord_webhook" 2>/dev/null | tr -d '\r\n'
+    return 0
+  fi
+  printf ""
+}
+
+# Append failure details to dead-letter error log file
+log_error_ledger() {
+  local target_path="$1"
+  local reason="$2"
+  local raw_error="$3"
+
+  local log_dir
+  log_dir="$(dirname "${ERROR_LOG_FILE}")"
+  if [[ -w "${log_dir}" || -w "${ERROR_LOG_FILE}" || ! -e "${ERROR_LOG_FILE}" ]]; then
+    local ts
+    ts="$(date '+%Y-%m-%d %H:%M:%S')"
+    local clean_error
+    clean_error="$(printf "%s" "${raw_error}" | tr '\r\n' ' ')"
+    printf "[%s] FAILED: %s | Reason: %s | Error: %s\n" "${ts}" "${target_path}" "${reason}" "${clean_error}" >> "${ERROR_LOG_FILE}" 2>/dev/null || true
+  fi
+}
+
+# Send structured Discord webhook embed
+send_discord_alert() {
+  local target_path="$1"
+  local reason="$2"
+  local raw_error="$3"
+
+  local webhook_url
+  webhook_url="$(get_discord_webhook_url)"
+  [[ -n "${webhook_url}" ]] || return 0
+
+  if (( ${#raw_error} > 950 )); then
+    raw_error="${raw_error:0:950}..."
+  fi
+
+  local esc_target esc_reason esc_error
+  esc_target="$(json_escape "${target_path}")"
+  esc_reason="$(json_escape "${reason}")"
+  esc_error="$(json_escape "${raw_error}")"
+  local timestamp
+  timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date +"%Y-%m-%dT%H:%M:%SZ")"
+
+  local payload
+  payload=$(cat <<EOF
+{
+  "embeds": [
+    {
+      "title": "🎵 normalizeusz: Błąd normalizacji głośności",
+      "description": "Nie udało się zapisać tagów ReplayGain 2.0 dla elementu.",
+      "color": 15158332,
+      "fields": [
+        {
+          "name": "📁 Ścieżka",
+          "value": "\`${esc_target}\`",
+          "inline": false
+        },
+        {
+          "name": "⚠️ Przyczyna",
+          "value": "${esc_reason}",
+          "inline": false
+        },
+        {
+          "name": "📝 Szczegóły błędu (rsgain)",
+          "value": "\`\`\`\n${esc_error}\n\`\`\`",
+          "inline": false
+        }
+      ],
+      "footer": {
+        "text": "normalizeusz • Serweusz"
+      },
+      "timestamp": "${timestamp}"
+    }
+  ]
+}
+EOF
+)
+
+  curl -s -S -X POST \
+    -H "Content-Type: application/json" \
+    -d "${payload}" \
+    "${webhook_url}" >/dev/null 2>&1 || log "Warning: Failed to deliver Discord webhook notification."
+}
+
+# Handle normalization failure
+notify_failure() {
+  local target_path="$1"
+  local raw_error="$2"
+
+  local reason="Błąd podczas przetwarzania przez rsgain"
+  if [[ "${raw_error}" =~ "Couldn't write to" ]] || [[ ! -w "${target_path}" ]]; then
+    reason="Brak uprawnień do zapisu pliku (plik należy do innego użytkownika, np. root:root). Rozwiązanie na Serweuszu: sudo chown -R mateusz:mateusz ~/media/music"
+  fi
+
+  log "ERROR: Normalization failed for ${target_path}: ${reason}"
+  log_error_ledger "${target_path}" "${reason}" "${raw_error}"
+  send_discord_alert "${target_path}" "${reason}" "${raw_error}"
+}
+
 # Execute rsgain on the target
 run_scan_target() {
   local target="$1"
@@ -143,14 +267,34 @@ run_scan_target() {
     return 0
   fi
 
+  # Check write permissions before running rsgain
+  if [[ ! -w "${target_path}" ]]; then
+    notify_failure "${target_path}" "Path is not writable by current user ($(id -u 2>/dev/null || true):$(id -g 2>/dev/null || true)). File/directory owned by another user or read-only."
+    return 1
+  fi
+
+  local scan_output=""
+  local scan_exit=0
+
   if [[ "${type}" == "DIR" ]]; then
     log "Normalizing album directory (rsgain easy): ${target_path}"
-    rsgain easy -S -m "${MAX_THREADS}" "${target_path}"
+    scan_output="$(rsgain easy -S -m "${MAX_THREADS}" "${target_path}" 2>&1)" || scan_exit=$?
   elif [[ "${type}" == "FILE" ]]; then
     log "Normalizing single track (rsgain custom): ${target_path}"
-    rsgain custom -s i -S "${target_path}"
+    scan_output="$(rsgain custom -s i -S "${target_path}" 2>&1)" || scan_exit=$?
   else
     log "Warning: Unknown target type: ${type}"
+    return 0
+  fi
+
+  if [[ -n "${scan_output}" ]]; then
+    echo "${scan_output}"
+  fi
+
+  # Detect rsgain errors or file write failures
+  if (( scan_exit != 0 )) || [[ "${scan_output}" =~ "Couldn't write to" ]] || [[ "${scan_output}" =~ "\[ERROR\]" ]]; then
+    notify_failure "${target_path}" "${scan_output:-Exit code ${scan_exit}}"
+    return 1
   fi
 
   # Record completion timestamp so self-writes do not re-queue this target

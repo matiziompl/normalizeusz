@@ -53,6 +53,7 @@ services:
       - DEBOUNCE_SECONDS=5
       - INITIAL_SCAN=true
       - MAX_THREADS=MAX
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
     volumes:
       - /home/user/media/music:/music:rw
 ```
@@ -68,6 +69,15 @@ services:
 | `DEBOUNCE_SECONDS`| `5` | Inactivity window before processing queued files |
 | `INITIAL_SCAN` | `true` | Run a library scan on startup (skips already tagged files) |
 | `MAX_THREADS` | `MAX` | Parallel threads for `rsgain` calculation (`MAX` uses all CPU cores) |
+| `DISCORD_WEBHOOK_URL` | *None* | (Optional) Discord Webhook URL for failure alerts (e.g. permission errors) |
+
+> [!TIP]
+> Keep your Discord Webhook private by creating a `.env` file (which is git-ignored):
+> ```bash
+> echo "DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/..." > .env
+> ```
+> Alternatively, place the webhook URL in `/home/mateusz/media/music/.discord_webhook`.
+> Unhandled errors are also recorded into `/music/.normalizeusz_errors.log`.
 
 ### 3. Deploying to Server
 

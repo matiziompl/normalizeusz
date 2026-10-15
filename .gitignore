@@ -1,1 +1,8 @@
 .superpowers/
+.env
+*.env
+*.env.local
+discord_webhook.txt
+webhook.txt
+.normalizeusz_errors.log
+

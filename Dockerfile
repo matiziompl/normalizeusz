@@ -10,7 +10,8 @@ RUN apk add --no-cache \
     bash \
     su-exec \
     coreutils \
-    tzdata
+    tzdata \
+    curl
 
 # Copy entrypoint and watcher scripts
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh

@@ -11,5 +11,6 @@ services:
       - DEBOUNCE_SECONDS=5
       - INITIAL_SCAN=true
       - MAX_THREADS=MAX
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
     volumes:
       - /home/mateusz/media/music:/music:rw
